@@ -1,4 +1,4 @@
-[![Molecule](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml) ![Ansible Role](https://img.shields.io/ansible/role/d/iamenr0s/ansible_role_container_hardening) [![CodeFactor](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening/badge)](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening)
+[![Molecule](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml) ![Ansible Role](https://img.shields.io/ansible/role/d/iamenr0s/container_hardening) [![CodeFactor](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening/badge)](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening)
 
 # Ansible Role: Container Hardening
 
@@ -105,4 +105,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 Author: iamenr0s
 
-Galaxy: `iamenr0s.ansible_role_container_hardening`
+Galaxy: `iamenr0s.container_hardening`
