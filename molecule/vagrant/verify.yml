@@ -1,0 +1,125 @@
+---
+- name: Not yet applied
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Read the file
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: __f
+    - name: The file has the managed keys, and our own key survived
+      vars:
+        __j: "{{ __f.content | b64decode | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - __j['icc'] == false
+          - __j['live-restore'] == true
+          - __j['debug'] == true
+        quiet: true
+    - name: The running daemon still has the old settings and the container is untouched
+      ansible.builtin.command: "{% raw %}docker inspect -f '{{.State.Running}}' before{% endraw %}"
+      register: __before
+      changed_when: false
+    - name: Audit reports the stale daemon as needing consent
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../.."  # noqa: role-name[path]
+      vars:
+        linux_hardening_mode: audit
+        linux_hardening_fail_on_error: false
+    - name: Exactly the stale daemon, not fixable without the switch, plus the docker group
+      ansible.builtin.assert:
+        that:
+          - __before.stdout == 'true'
+          - linux_hardening_container_findings | map(attribute='key') | sort == ['docker group members', 'running daemon applies daemon.json']
+          - linux_hardening_container_findings | selectattr('key', 'equalto', 'running daemon applies daemon.json') | map(attribute='fixable') | first == false
+        fail_msg: "{{ linux_hardening_container_findings | to_json }}"
+        quiet: true
+
+- name: Restart with consent
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Remediate with the restart switch
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../.."  # noqa: role-name[path]
+      vars:
+        linux_hardening_mode: remediate
+        linux_hardening_confirm_remediation: true
+        linux_hardening_container_restart: true
+        linux_hardening_container_docker_group_allowed: [vagrant]
+    - name: A second run changes nothing
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../.."  # noqa: role-name[path]
+      vars:
+        linux_hardening_mode: remediate
+        linux_hardening_confirm_remediation: true
+        linux_hardening_container_restart: true
+        linux_hardening_container_docker_group_allowed: [vagrant]
+    - name: Clean
+      ansible.builtin.assert:
+        that: linux_hardening_container_findings | length == 0
+        fail_msg: "{{ linux_hardening_container_findings | to_json }}"
+        quiet: true
+
+- name: Check after the restart
+  ansible.builtin.import_playbook: check.yml
+
+- name: Live restore keeps a container alive across a daemon restart
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Start a container with the new configuration
+      ansible.builtin.command: docker run -d --name after busybox sleep 100000
+      changed_when: true
+    - name: The log options reached the container
+      ansible.builtin.command: "{% raw %}docker inspect -f '{{json .HostConfig.LogConfig}}' after{% endraw %}"
+      register: __log
+      changed_when: false
+    - name: Check
+      ansible.builtin.assert:
+        that: (__log.stdout | from_json).Config['max-size'] == '10m'
+        quiet: true
+    # The unit allows only a few starts per minute and this scenario has already restarted Docker twice.
+    - name: Clear systemd's start-rate limit
+      ansible.builtin.command: systemctl reset-failed docker.service  # noqa: command-instead-of-module
+      changed_when: false
+    - name: Restart dockerd
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+    - name: Wait for the daemon
+      ansible.builtin.command: docker info
+      register: __up
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: __up.rc == 0
+    - name: The container survived
+      ansible.builtin.command: "{% raw %}docker inspect -f '{{.State.Running}}' after{% endraw %}"
+      register: __after
+      changed_when: false
+      failed_when: __after.stdout != 'true'
+
+- name: Reboot
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Reboot
+      ansible.builtin.reboot:
+        reboot_timeout: 600
+        post_reboot_delay: 45
+        connect_timeout: 30
+    - name: Wait for the daemon
+      ansible.builtin.command: docker info
+      register: __up
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: __up.rc == 0
+
+- name: Check after the reboot
+  ansible.builtin.import_playbook: check.yml

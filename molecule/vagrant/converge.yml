@@ -1,0 +1,14 @@
+---
+# Remediate WITHOUT consent to restart: the file changes, the running daemon is left alone.
+- name: Converge (remediate, no restart)
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Remediate
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../.."  # noqa: role-name[path]
+      vars:
+        linux_hardening_mode: remediate
+        linux_hardening_confirm_remediation: true
+        linux_hardening_fail_on_error: false

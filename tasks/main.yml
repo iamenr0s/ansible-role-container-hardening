@@ -1,0 +1,59 @@
+---
+# audit: read-only. remediate: daemon.json, permissions, and (only with consent) a dockerd restart.
+# Docker is not installed or removed by this role: without dockerd the role has nothing to harden.
+- name: Run container_hardening
+  when: linux_hardening_container_enabled | bool
+  block:
+    - name: Validate linux_hardening_mode
+      ansible.builtin.assert:
+        that: linux_hardening_mode in ['audit', 'remediate']
+        fail_msg: "linux_hardening_mode must be 'audit' or 'remediate', got '{{ linux_hardening_mode }}'"
+        quiet: true
+
+    - name: Look for the Docker daemon
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: "{{ __linux_hardening_container_dockerd_paths }}"
+      register: __lh_ct_dockerd_stat
+
+    - name: Remember where it is
+      ansible.builtin.set_fact:
+        __lh_ct_dockerd_bin: "{{ __lh_ct_dockerd_stat.results | selectattr('stat.exists') | map(attribute='item') | first | default('') }}"
+
+    - name: Nothing to harden without Docker
+      ansible.builtin.set_fact:
+        linux_hardening_container_findings: []
+      when: __lh_ct_dockerd_bin == ''
+
+    - name: Say why the role was skipped
+      ansible.builtin.debug:
+        msg: "container_hardening found no dockerd ({{ __linux_hardening_container_dockerd_paths | join(', ') }}): Docker is not installed, nothing to do."
+      when: __lh_ct_dockerd_bin == ''
+
+    - name: Run with Docker installed
+      when: __lh_ct_dockerd_bin != ''
+      block:
+        - name: Audit (read-only)
+          ansible.builtin.include_tasks: audit.yml
+          when: linux_hardening_mode == 'audit'
+
+        - name: Remediate
+          when: linux_hardening_mode == 'remediate'
+          block:
+            - name: Require explicit remediation confirmation
+              ansible.builtin.assert:
+                that: linux_hardening_confirm_remediation | bool
+                fail_msg: >-
+                  Remediation rewrites the managed keys of the Docker daemon configuration (and, with
+                  linux_hardening_container_restart, restarts dockerd). Set linux_hardening_confirm_remediation: true
+                  to proceed (run with linux_hardening_mode: audit to preview).
+                quiet: true
+
+            - name: Configure
+              ansible.builtin.include_tasks: configure.yml
+
+            - name: Verify effective configuration
+              ansible.builtin.include_tasks: audit.yml
+              vars:
+                __lh_ct_audit_fatal: true
+              when: linux_hardening_verify | bool

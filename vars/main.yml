@@ -1,0 +1,4 @@
+---
+# Docker CE and Fedora use /usr/bin, Debian's docker.io uses /usr/sbin.
+__linux_hardening_container_dockerd_paths: [/usr/bin/dockerd, /usr/sbin/dockerd]
+__linux_hardening_container_dir: /etc/docker

@@ -1,0 +1,33 @@
+---
+# What the daemon really does, before and after the reboot.
+- name: Check the running daemon
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Ask the daemon
+      ansible.builtin.command: "{% raw %}docker info --format '{{json .}}'{% endraw %}"
+      register: __info
+      changed_when: false
+    - name: Live restore and the log driver are on
+      ansible.builtin.assert:
+        that:
+          - (__info.stdout | from_json).LiveRestoreEnabled == true
+          - (__info.stdout | from_json).LoggingDriver == 'json-file'
+        quiet: true
+    - name: Default bridge options
+      ansible.builtin.command: "{% raw %}docker network inspect bridge --format '{{json .Options}}'{% endraw %}"
+      register: __br
+      changed_when: false
+    - name: No unrestricted traffic between containers
+      ansible.builtin.assert:
+        that: (__br.stdout | from_json)['com.docker.network.bridge.enable_icc'] == 'false'
+        quiet: true
+    - name: A new container cannot gain privileges
+      ansible.builtin.command: docker run --rm busybox grep NoNewPrivs /proc/self/status
+      register: __nnp
+      changed_when: false
+    - name: Check
+      ansible.builtin.assert:
+        that: __nnp.stdout is search('NoNewPrivs:\s+1')
+        quiet: true

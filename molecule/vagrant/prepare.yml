@@ -1,0 +1,56 @@
+---
+# A real Docker Engine with a deliberately weak configuration, and a container running on it.
+- name: Prepare a Docker host
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Docker CE repository (EL)
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/rhel/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+        mode: '0644'
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Install Docker (EL)
+      ansible.builtin.dnf:
+        name: [docker-ce, docker-ce-cli, containerd.io]
+        state: present
+      when: ansible_facts['os_family'] == 'RedHat'
+
+    - name: Install Docker (Debian family)
+      ansible.builtin.apt:
+        name: docker.io
+        state: present
+        update_cache: true
+      when: ansible_facts['os_family'] == 'Debian'
+
+    - name: A weak configuration with a key the role does not own
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+        content: '{"debug": true, "icc": true}'
+
+    - name: Start Docker
+      ansible.builtin.systemd:
+        name: docker
+        state: restarted
+        enabled: true
+
+    - name: Pull a small image
+      ansible.builtin.command: docker pull busybox
+      register: __pull
+      changed_when: true
+      retries: 5
+      delay: 5
+      until: __pull.rc == 0
+
+    - name: A container that is running before the role does anything
+      ansible.builtin.command: docker run -d --name before busybox sleep 100000
+      changed_when: true
+
+    - name: A user in the docker group
+      ansible.builtin.user:
+        name: vagrant
+        groups: docker
+        append: true

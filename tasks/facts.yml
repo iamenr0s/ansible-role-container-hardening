@@ -1,0 +1,102 @@
+---
+# Read-only. Sets the __lh_ct_* facts.
+- name: Stat the configuration directory and file
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop: ["{{ __linux_hardening_container_dir }}", "{{ linux_hardening_container_config }}"]
+  register: __lh_ct_stats
+
+- name: Read daemon.json
+  ansible.builtin.slurp:
+    src: "{{ linux_hardening_container_config }}"
+  register: __lh_ct_file
+  failed_when: false
+
+# An empty file is the same as no configuration; anything that is not a JSON object is left alone and reported.
+- name: Parse daemon.json
+  ansible.builtin.set_fact:
+    __lh_ct_cur: "{{ ((__lh_ct_file.content | default('e30=') | b64decode | trim) or '{}') | from_json }}"
+  failed_when: false
+  register: __lh_ct_parse
+
+- name: Keep what was parsed
+  ansible.builtin.set_fact:
+    __lh_ct_json_ok: "{{ __lh_ct_parse is not failed and __lh_ct_cur is mapping }}"
+    __lh_ct_cur: "{{ __lh_ct_cur if (__lh_ct_parse is not failed and __lh_ct_cur is mapping) else {} }}"
+
+- name: Work out the managed keys that differ
+  ansible.builtin.set_fact:
+    __lh_ct_diff_raw: >-
+      {%- set out = [] -%}
+      {%- for k, v in linux_hardening_container_daemon.items() -%}
+      {%- if __lh_ct_cur.get(k) != v -%}{%- set _ = out.append(k) -%}{%- endif -%}
+      {%- endfor -%}
+      {{ out | to_json }}
+    __lh_ct_desired: "{{ __lh_ct_cur | combine(linux_hardening_container_daemon) }}"
+
+- name: Record the differing keys
+  ansible.builtin.set_fact:
+    __lh_ct_diff: "{{ __lh_ct_diff_raw | from_json }}"
+
+- name: Ask the daemon binary what it can validate
+  ansible.builtin.command: "{{ __lh_ct_dockerd_bin }} --help"
+  register: __lh_ct_help
+  changed_when: false
+  failed_when: false
+
+- name: Query the docker unit
+  ansible.builtin.systemd:
+    name: docker
+  register: __lh_ct_unit
+  failed_when: false
+
+- name: Ask the running daemon
+  when: __lh_ct_unit.status.ActiveState | default('') == 'active'
+  block:
+    - name: Ask docker info
+      ansible.builtin.command: "{% raw %}docker info --format '{{json .}}'{% endraw %}"
+      register: __lh_ct_info
+      changed_when: false
+      failed_when: false
+
+    - name: Default bridge options
+      ansible.builtin.command: "{% raw %}docker network inspect bridge --format '{{json .Options}}'{% endraw %}"
+      register: __lh_ct_bridge
+      changed_when: false
+      failed_when: false
+
+- name: Is anything listening on the unencrypted Docker port
+  ansible.builtin.command: ss -Htln 'sport = :2375'
+  register: __lh_ct_tcp
+  changed_when: false
+  failed_when: false
+
+- name: Read the docker group
+  ansible.builtin.getent:
+    database: group
+    key: docker
+  failed_when: false
+  register: __lh_ct_group
+
+- name: Work out what the running daemon is doing
+  ansible.builtin.set_fact:
+    __lh_ct_run_info: "{{ (__lh_ct_info.stdout | default('{}') or '{}') | from_json if (__lh_ct_info.rc | default(1)) == 0 else {} }}"
+    __lh_ct_run_bridge: "{{ (__lh_ct_bridge.stdout | default('{}') or '{}') | from_json if (__lh_ct_bridge.rc | default(1)) == 0 else {} }}"
+
+# Only what the daemon reports about itself is compared (the other keys have no read-back).
+- name: Find the settings the running daemon does not apply
+  ansible.builtin.set_fact:
+    __lh_ct_stale_raw: >-
+      {%- set d = linux_hardening_container_daemon -%}
+      {%- set out = [] -%}
+      {%- if 'live-restore' in d and 'LiveRestoreEnabled' in __lh_ct_run_info and __lh_ct_run_info['LiveRestoreEnabled'] != d['live-restore'] -%}
+      {%- set _ = out.append('live-restore') -%}{%- endif -%}
+      {%- if 'log-driver' in d and 'LoggingDriver' in __lh_ct_run_info and __lh_ct_run_info['LoggingDriver'] != d['log-driver'] -%}
+      {%- set _ = out.append('log-driver') -%}{%- endif -%}
+      {%- if 'icc' in d and __lh_ct_run_bridge | length > 0 and (__lh_ct_run_bridge.get('com.docker.network.bridge.enable_icc', 'true') | string | lower) != (d['icc'] | string | lower) -%}
+      {%- set _ = out.append('icc') -%}{%- endif -%}
+      {{ out | to_json }}
+
+- name: Record the stale settings
+  ansible.builtin.set_fact:
+    __lh_ct_stale: "{{ __lh_ct_stale_raw | from_json }}"

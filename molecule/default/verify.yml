@@ -1,0 +1,71 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  gather_facts: true
+  tasks:
+    - name: Read daemon.json
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: __f
+    - name: Stat it and its directory
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop: [/etc/docker/daemon.json, /etc/docker]
+      register: __st
+    - name: Managed keys are set, ours are kept, the rest is untouched
+      vars:
+        __j: "{{ __f.content | b64decode | from_json }}"
+      ansible.builtin.assert:
+        that:
+          - __j['icc'] == false
+          - __j['no-new-privileges'] == true
+          - __j['live-restore'] == true
+          - __j['log-opts']['max-file'] == '3'
+          - __j['debug'] == true
+          - __j['registry-mirrors'] == ['https://mirror.example']
+          - __st.results[0].stat.mode == '0644'
+          - __st.results[1].stat.mode == '0755'
+        quiet: true
+    - name: The previous file was backed up
+      ansible.builtin.find:
+        paths: /etc/docker
+        patterns: 'daemon.json.*~'
+      register: __bak
+      failed_when: __bak.matched == 0
+    - name: Audit again
+      ansible.builtin.include_role:
+        name: "{{ playbook_dir }}/../.."  # noqa: role-name[path]
+      vars:
+        linux_hardening_mode: audit
+        linux_hardening_fail_on_error: false
+    - name: Clean
+      ansible.builtin.assert:
+        that: linux_hardening_container_findings | length == 0
+        fail_msg: "{{ linux_hardening_container_findings | to_json }}"
+        quiet: true
+    - name: Broken JSON is reported, never overwritten
+      block:
+        - name: Break it
+          ansible.builtin.copy:
+            dest: /etc/docker/daemon.json
+            content: '{"debug": tru'
+            mode: '0644'
+        - name: Remediation refuses
+          ansible.builtin.include_role:
+            name: "{{ playbook_dir }}/../.."  # noqa: role-name[path]
+          vars:
+            linux_hardening_mode: remediate
+            linux_hardening_confirm_remediation: true
+        - name: Fail if it did not
+          ansible.builtin.fail:
+            msg: Role overwrote a file that is not JSON.
+      rescue:
+        - name: Refused, and the file is intact
+          ansible.builtin.slurp:
+            src: /etc/docker/daemon.json
+          register: __b
+        - name: Check
+          ansible.builtin.assert:
+            that: "(__b.content | b64decode) == '{\"debug\": tru'"
+            quiet: true

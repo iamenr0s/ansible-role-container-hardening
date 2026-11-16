@@ -1,0 +1,25 @@
+---
+# A container cannot run dockerd for this, but everything the role does to the files does not need a daemon. A stub
+# stands in for the binary (the VM scenario uses a real Docker).
+- name: Prepare
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Stub dockerd
+      ansible.builtin.copy:
+        dest: /usr/sbin/dockerd
+        mode: '0755'
+        content: |
+          #!/bin/sh
+          echo "      --validate   Validate daemon configuration and exit"
+    - name: Config directory
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: '0777'
+    - name: An existing daemon.json with a key we do not own and one we do (wrong)
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: '0666'
+        content: '{"debug": true, "icc": true, "registry-mirrors": ["https://mirror.example"]}'

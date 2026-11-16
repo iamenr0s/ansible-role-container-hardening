@@ -1,0 +1,28 @@
+---
+# --- Shared collection variables ---
+linux_hardening_mode: audit                    # audit (read-only) | remediate
+linux_hardening_confirm_remediation: false     # must be true for any change
+linux_hardening_backup: true
+linux_hardening_verify: true
+linux_hardening_fail_on_error: true
+
+# --- container_hardening (Docker Engine host configuration; Docker is not installed by this role) ---
+linux_hardening_container_enabled: true
+linux_hardening_container_config: /etc/docker/daemon.json
+
+# The keys this role owns in daemon.json, with their exact values. Other keys in the file are kept untouched.
+# Override the whole dictionary to change what is enforced (an omitted key is simply not managed).
+linux_hardening_container_daemon:
+  icc: false                   # no unrestricted traffic between containers on the default bridge
+  no-new-privileges: true      # containers cannot gain privileges through setuid binaries
+  live-restore: true           # containers keep running while the daemon restarts
+  userland-proxy: false        # use iptables/nftables instead of docker-proxy
+  log-driver: json-file
+  log-opts: {max-size: 10m, max-file: '3'}   # bounded logs
+
+# Most daemon.json keys only take effect when dockerd restarts, which stops every running container unless
+# live-restore is already on. Restarting is your call, so it needs this switch.
+linux_hardening_container_restart: false
+
+# Members of the docker group are root-equivalent. Anyone else in it is reported (never removed).
+linux_hardening_container_docker_group_allowed: []
