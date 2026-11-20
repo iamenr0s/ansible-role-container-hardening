@@ -1,13 +1,13 @@
 ---
-- name: Gather Docker state
+- name: audit | Gather Docker state
   ansible.builtin.include_tasks: facts.yml
 
 # Each task below adds one finding to the list when its check fails; read top to bottom.
-- name: Start with no findings
+- name: audit | Start with no findings
   ansible.builtin.set_fact:
     linux_hardening_container_findings: []
 
-- name: Report an unparseable daemon.json (never overwritten)
+- name: audit | Report an unparseable daemon.json (never overwritten)
   ansible.builtin.set_fact:
     linux_hardening_container_findings: "{{ linux_hardening_container_findings + [finding] }}"
   vars:
@@ -18,7 +18,7 @@
       fixable: false
   when: not __lh_ct_json_ok
 
-- name: Report managed daemon.json keys that differ
+- name: audit | Report managed daemon.json keys that differ
   ansible.builtin.set_fact:
     linux_hardening_container_findings: "{{ linux_hardening_container_findings + [finding] }}"
   vars:
@@ -29,12 +29,12 @@
       fixable: true
   loop: "{{ __lh_ct_diff if __lh_ct_json_ok else [] }}"
 
-- name: Report a configuration directory or file that is not root-owned and locked down
+- name: audit | Report a configuration directory or file that is not root-owned and locked down
   vars:
     __lh_ct_dir: "{{ __lh_ct_stats.results[0].stat }}"
     __lh_ct_cfg: "{{ __lh_ct_stats.results[1].stat }}"
   block:
-    - name: Check the configuration directory
+    - name: audit | Check the configuration directory
       ansible.builtin.set_fact:
         linux_hardening_container_findings: "{{ linux_hardening_container_findings + [finding] }}"
       vars:
@@ -47,7 +47,7 @@
         - __lh_ct_dir.exists
         - __lh_ct_dir.pw_name != 'root' or __lh_ct_dir.mode[-2:] not in ['55', '50', '00', '40']
 
-    - name: Check the configuration file
+    - name: audit | Check the configuration file
       ansible.builtin.set_fact:
         linux_hardening_container_findings: "{{ linux_hardening_container_findings + [finding] }}"
       vars:
@@ -60,7 +60,7 @@
         - __lh_ct_cfg.exists
         - __lh_ct_cfg.pw_name != 'root' or __lh_ct_cfg.mode[-2:] not in ['44', '40', '00']
 
-- name: Report a running daemon that has not picked up daemon.json
+- name: audit | Report a running daemon that has not picked up daemon.json
   ansible.builtin.set_fact:
     linux_hardening_container_findings: "{{ linux_hardening_container_findings + [finding] }}"
   vars:
@@ -76,7 +76,7 @@
     - __lh_ct_json_ok
     - __lh_ct_stale | length > 0
 
-- name: Report an unencrypted Docker API
+- name: audit | Report an unencrypted Docker API
   ansible.builtin.set_fact:
     linux_hardening_container_findings: "{{ linux_hardening_container_findings + [finding] }}"
   vars:
@@ -87,7 +87,7 @@
       fixable: false
   when: __lh_ct_tcp.stdout | default('') | trim | length > 0
 
-- name: Report docker group members that are not allowed
+- name: audit | Report docker group members that are not allowed
   ansible.builtin.set_fact:
     linux_hardening_container_findings: "{{ linux_hardening_container_findings + [finding] }}"
   vars:
@@ -101,12 +101,12 @@
       fixable: false
   when: __lh_ct_members | length > 0
 
-- name: Report container_hardening result
+- name: audit | Report container_hardening result
   ansible.builtin.debug:
     msg: "{{ 'COMPLIANT' if linux_hardening_container_findings | length == 0 else linux_hardening_container_findings }}"
 
 # After remediation only fixable findings fail the run.
-- name: Fail on findings
+- name: audit | Fail on findings
   ansible.builtin.fail:
     msg: "container_hardening found {{ __lh_ct_blocking | length }} deviation(s)."
   vars:
