@@ -1,14 +1,14 @@
 ---
-- name: Gather Docker state
+- name: configure | Gather Docker state
   ansible.builtin.include_tasks: facts.yml
 
-- name: Refuse to overwrite a daemon.json that is not JSON
+- name: configure | Refuse to overwrite a daemon.json that is not JSON
   ansible.builtin.assert:
     that: __lh_ct_json_ok | bool
     fail_msg: "{{ linux_hardening_container_config }} is not a JSON object; fix it by hand, the role will not overwrite it."
     quiet: true
 
-- name: Configuration directory
+- name: configure | Configuration directory
   ansible.builtin.file:
     path: "{{ __linux_hardening_container_dir }}"
     state: directory
@@ -21,7 +21,7 @@
 
 # Written only when a managed key differs (or the file is missing): a correct file keeps its own formatting. Other keys
 # are carried over. dockerd checks the file first when it knows how, so a bad key cannot stop the daemon at the next start.
-- name: Write daemon.json
+- name: configure | Write daemon.json
   ansible.builtin.copy:
     content: "{{ __lh_ct_desired | to_nice_json(indent=2) }}\n"
     dest: "{{ linux_hardening_container_config }}"
@@ -33,7 +33,7 @@
   when: __lh_ct_diff | length > 0 or not __lh_ct_stats.results[1].stat.exists
   register: __lh_ct_written
 
-- name: Tighten the permissions of an existing file
+- name: configure | Tighten the permissions of an existing file
   ansible.builtin.file:
     path: "{{ linux_hardening_container_config }}"
     owner: root
@@ -42,7 +42,7 @@
   when: __lh_ct_stats.results[1].stat.exists and __lh_ct_stats.results[1].stat.mode[-2:] not in ['44', '40', '00']
 
 # Restarts stop every container unless live-restore is already on, so only with consent. A stopped daemon is left stopped.
-- name: Restart dockerd so the configuration takes effect
+- name: configure | Restart dockerd so the configuration takes effect
   ansible.builtin.systemd:
     name: docker
     state: restarted
@@ -52,7 +52,7 @@
     - __lh_ct_written is changed or __lh_ct_stale | length > 0
   register: __lh_ct_restarted
 
-- name: Wait for the daemon to answer  # noqa: no-handler
+- name: configure | Wait for the daemon to answer  # noqa: no-handler
   ansible.builtin.command: docker info
   register: __lh_ct_ready
   changed_when: false

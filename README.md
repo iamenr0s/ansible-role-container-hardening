@@ -1,4 +1,4 @@
-[![Molecule](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml) ![Ansible Role](https://img.shields.io/ansible/role/d/iamenr0s/ansible_role_container_hardening) [![CodeFactor](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening/badge)](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening)
+[![Molecule](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml/badge.svg)](https://github.com/iamenr0s/ansible-role-container-hardening/actions/workflows/molecule.yml) ![Ansible Role](https://img.shields.io/ansible/role/d/iamenr0s/container_hardening) [![CodeFactor](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening/badge)](https://www.codefactor.io/repository/github/iamenr0s/ansible-role-container-hardening)
 
 # Ansible Role: Container Hardening
 
@@ -40,11 +40,31 @@ The selection follows the common daemon-level items of Docker hardening guides, 
 ## Modes
 `audit` (default) is read-only and sets `linux_hardening_container_findings` (`key, expected, actual, fixable`). `remediate` needs `linux_hardening_confirm_remediation: true`; afterwards only fixable findings fail the run.
 
+## Role Variables
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `linux_hardening_mode` | str | `audit` | audit is read-only. Choices: `audit`, `remediate`. |
+| `linux_hardening_confirm_remediation` | bool | `false` | Must be true before remediate changes anything. |
+| `linux_hardening_backup` | bool | `true` | Back up daemon.json when it changes. |
+| `linux_hardening_verify` | bool | `true` | Re-audit after remediation. |
+| `linux_hardening_fail_on_error` | bool | `true` | Fail the play when audit finds deviations. |
+| `linux_hardening_container_enabled` | bool | `true` | Run the role. |
+| `linux_hardening_container_config` | path | `/etc/docker/daemon.json` | Docker daemon configuration file. |
+| `linux_hardening_container_daemon` | dict | see `defaults/main.yml` | daemon.json keys this role owns, with exact values; other keys are kept. |
+| `linux_hardening_container_restart` | bool | `false` | Allow restarting dockerd so the configuration takes effect. |
+| `linux_hardening_container_docker_group_allowed` | list of str | `[]` | Users allowed in the docker group; others are reported. |
+
+**Idempotent:** yes. A second `remediate` run reports no changes (the Molecule `idempotence` step checks this).
+
+**Check mode:** `remediate` with `--check --diff` shows what would change without writing anything; the post-remediation re-audit is skipped in check mode.
+
 ## Example
 ```yaml
 - hosts: docker_hosts
+  become: true
   roles:
-    - role: iamenr0s.linux_hardening.container_hardening
+    - role: iamenr0s.container_hardening
       vars:
         linux_hardening_mode: remediate
         linux_hardening_confirm_remediation: true
