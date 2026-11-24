@@ -10,6 +10,15 @@ argument_specs:
       linux_hardening_fail_on_error: {type: bool, default: true, description: "Fail the play when audit finds deviations."}
       linux_hardening_container_enabled: {type: bool, default: true, description: "Run the role."}
       linux_hardening_container_config: {type: path, default: /etc/docker/daemon.json, description: "Docker daemon configuration file."}
-      linux_hardening_container_daemon: {type: dict, description: "daemon.json keys this role owns, with exact values; other keys are kept."}
+      linux_hardening_container_daemon:
+        type: dict
+        description: "daemon.json keys this role owns, with exact values; other keys are kept."
+        default:
+          icc: false
+          no-new-privileges: true
+          live-restore: true
+          userland-proxy: false
+          log-driver: json-file
+          log-opts: {max-size: 10m, max-file: '3'}
       linux_hardening_container_restart: {type: bool, default: false, description: "Allow restarting dockerd so the configuration takes effect."}
       linux_hardening_container_docker_group_allowed: {type: list, elements: str, default: [], description: "Users allowed in the docker group; others are reported."}
